@@ -33,38 +33,65 @@ public class RockRepository : IRockRepository
  
     public Task<Rock?> GetRockByIdAsync(string memberId, string rockId)
     {
-        var rock = _rocks.GetValueOrDefault(memberId)?
-            .FirstOrDefault(r => r.Id == rockId);
 
-        if (rock is not null)
-            _logger.LogInformation("Successfully retrieved rock {RockId} for member {MemberId}", rockId, memberId);
-        else
-            _logger.LogWarning("Rock {RockId} not found for member {MemberId}", rockId, memberId);
+        if(!_rocks.TryGetValue(memberId, out var rocks))
+        {
+            _logger.LogWarning("No rocks found for member {MemberId}", memberId);
+            return Task.FromResult<Rock?>(null);
+        }
 
-        return Task.FromResult(rock);
+        lock (rocks)
+        {
+            var rock = rocks.FirstOrDefault(r => r.Id == rockId);
+
+            if (rock is not null)
+                _logger.LogInformation("Successfully retrieved rock {RockId} for member {MemberId}", rockId, memberId);
+            else
+                _logger.LogWarning("Rock {RockId} not found for member {MemberId}", rockId, memberId);
+
+            return Task.FromResult(rock);
+        }
+
     }
  
     public Task<IEnumerable<Rock>> GetAllRocksAsync(string memberId, RockStatus? status = null)
     {
-        var rocks = _rocks.GetValueOrDefault(memberId) ??
-            Enumerable.Empty<Rock>();
 
-        var result = status.HasValue
-            ? rocks.Where(r => r.Status == status.Value)
-            : rocks;
+        if(!_rocks.TryGetValue(memberId, out var rocks))
+        {
+            _logger.LogWarning("No rocks found for member {MemberId}", memberId);
+            return Task.FromResult(Enumerable.Empty<Rock>());
+        }
 
-        _logger.LogInformation("Successfully retrieved {RockCount} rocks for member {MemberId}", result.Count(), memberId);
+        lock (rocks)
+        {
+            var result = status.HasValue
+                ? rocks.Where(r => r.Status == status.Value)
+                : rocks.ToList();
 
-        return Task.FromResult(result);
+            _logger.LogInformation("Successfully retrieved {RockCount} rocks for member {MemberId}", result.Count(), memberId);
+
+            return Task.FromResult(result);
+        }
+      
     }
  
     public Task UpdateAsync(Rock rock)
     {
-        var rocks = _rocks.GetValueOrDefault(rock.MemberId);
-        var index = rocks?.FindIndex(r => r.Id == rock.Id) ?? -1;
+        if(!_rocks.TryGetValue(rock.MemberId, out var rocks))
+        {
+            _logger.LogWarning("No rocks found for member {MemberId}. Cannot update rock {RockId}", rock.MemberId, rock.Id);
+            return Task.CompletedTask;
+        }
 
-        if (index >= 0 && rocks is not null)
-            rocks![index] = rock;
+        lock (rocks)
+        {
+            var index = rocks.FindIndex(r => r.Id == rock.Id);
+
+            if (index >= 0)
+                rocks[index] = rock;
+        }
+        
 
         _logger.LogInformation("Successfully updated rock {RockId} for member {MemberId}", rock.Id, rock.MemberId);
 

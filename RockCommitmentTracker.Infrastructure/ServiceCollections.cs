@@ -22,27 +22,29 @@ public static class ServiceCollections
             client.Timeout = TimeSpan.FromSeconds(30);
         })
         .AddResilienceHandler("retry", (pipeline, context) =>
+{
+    var logger = context.ServiceProvider
+        .GetRequiredService<ILogger<JsonPlaceholderUserProfileClient>>();
+
+    var retryOptions = new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        BackoffType = DelayBackoffType.Exponential,
+        UseJitter = true,
+        OnRetry = args =>
         {
-            var logger = context.ServiceProvider
-                .GetRequiredService<ILogger<JsonPlaceholderUserProfileClient>>();
+            logger.LogWarning(
+                "Retry attempt {AttemptNumber} of 3. Delay: {DelayMs}ms. Reason: {Reason}",
+                args.AttemptNumber + 1,
+                Math.Round(args.RetryDelay.TotalMilliseconds),
+                args.Outcome.Exception?.Message ?? args.Outcome.Result?.ReasonPhrase);
 
-            pipeline.AddRetry(new HttpRetryStrategyOptions
-            {
-                MaxRetryAttempts = 3,
-                BackoffType = DelayBackoffType.Exponential,
-                UseJitter = true,
-                OnRetry = args =>
-                {
-                    logger.LogWarning(
-                        "Retry attempt {AttemptNumber} of 3. Delay: {DelayMs}ms. Reason: {Reason}",
-                        args.AttemptNumber + 1,
-                        Math.Round(args.RetryDelay.TotalMilliseconds),
-                        args.Outcome.Exception?.Message ?? args.Outcome.Result?.ReasonPhrase);
+            return ValueTask.CompletedTask;
+        }
+    };
 
-                    return ValueTask.CompletedTask;
-                }
-            });
-        });
+    pipeline.AddRetry(retryOptions);
+});
 
         return services;
     }

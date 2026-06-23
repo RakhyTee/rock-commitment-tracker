@@ -21,7 +21,12 @@ public class JsonPlaceholderUserProfileClient : IUserProfileClient
         _logger.LogInformation("Fetching profile for member {MemberId}", memberId);
  
         var response = await _httpClient.GetAsync($"/users/{memberId}");
-        response.EnsureSuccessStatusCode();
+
+        if(!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Failed to fetch profile for member {MemberId}. Status Code: {StatusCode}", memberId, response.StatusCode);
+             response.EnsureSuccessStatusCode();
+        }
 
         return await response.Content.ReadFromJsonAsync<UserProfile>();
     }
